@@ -1,3 +1,10 @@
+# course: Einführung in die mobile Robotik
+# laboratory: 1
+# date: 06.11.2020
+# author: Susanne Brockmann
+# team: 9
+# description: transformation and rotation matrices for robotics
+
 import numpy as np
 from math import sin, cos
 
