@@ -27,7 +27,7 @@ myRobot._k_d = 0 #0.05 * 0.05  # velocity noise parameter = 0.05m*0.05m / 1m
 myRobot._k_theta = 0 # (5.0 * 5.0/360.0) * (pi/180.0)  # turning rate noise parameter = 5deg*5deg/360deg * (1rad/1deg)
 myRobot._k_drift = 0 # (2.0 * 2.0)/1.0 * (pi/180.0)**2  # drift noise parameter = 2deg*2deg / 1m
 
-myWorld.setRobot(myRobot, [10, myWorld._height/2, 0])
+myWorld.setRobot(myRobot, [12, myWorld._height/2, 0])
 
 # KeyboardController definieren:
 myKeyboardController = myWorld.getKeyboardController()
@@ -63,9 +63,31 @@ def curveDrive(robot, v, r, theta):
     return robot
 
 
-curveDrive(myRobot, 0.5, 2, np.radians(360) )
+def turnOnSpot(robot, theta, omega):
+    print()
+    if omega >= robot._maxOmega:
+        print(f"Rotation speed {omega} is too high for this robot. Max speed {robot._maxOmega}")
+        return
+    else:
+        n = int((theta/omega)/myRobot.getTimeStep())
+        print (f'Timesteps: {n}')
+        motionList = [[0, omega] for i in range(n)] # movements
 
-#straightDrive(myRobot, 1, 80)
+        for t in range(n):
+            # Bewege Roboter
+            motion = motionList[t]
+            robot.move(motion)
+        return robot
+
+
+straightDrive(myRobot, 1,25 )
+turnOnSpot(myRobot, np.radians(90), 1.2)
+straightDrive(myRobot, 1,25 )
+turnOnSpot(myRobot, np.radians(90), 0.5)
+straightDrive(myRobot, 1,25 )
+turnOnSpot(myRobot, np.radians(90), 0.5)
+straightDrive(myRobot, 1,25 )
+turnOnSpot(myRobot, np.radians(90), 0.5)
 #straightDrive(myRobot, 0.5, 80)
 
 
