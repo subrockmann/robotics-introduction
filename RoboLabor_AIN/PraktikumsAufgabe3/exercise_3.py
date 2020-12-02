@@ -170,6 +170,39 @@ def line_utils(p1, p2):
 
     return n, n_norm, n_0, alpha, O_distance
 
+def distance_to_line(n_0, O_distance, pose):    
+    # calulate distance between robot and line
+    (robot_x, robot_y,robot_theta) = pose
+    distance_robot_line = np.dot(np.array((robot_x, robot_y)).transpose(), n_0) - O_distance
+    return distance_robot_line
+
+def get_correction_angle(distance_robot_line, betha, pose):
+    (robot_x, robot_y,robot_theta) = pose
+    # calculate the correction of angular change
+    gamma = atan2(1, distance_robot_line) # vector length of norm vector is 1
+    betha_gamma = betha + gamma
+    #theta_star = angularDifference(np.pi, betha_gamma)
+    theta_star = np.pi - betha - gamma
+    theta_delta  = angularDifference(theta_star, robot_theta)
+
+    # if theta_star > robot_theta:
+    #     #theta_delta  = angularDifference(theta_star, robot_theta)
+    #     theta_delta  = angularDifference(robot_theta, theta_star)
+    # else:
+    #     #theta_delta  = angularDifference(robot_theta, theta_star)
+    #     theta_delta  = angularDifference(theta_star, robot_theta)
+    return theta_delta
+
+def moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v):
+    pose = myWorld.getTrueRobotPose()
+    distance_robot_line = distance_to_line(n_0, O_distance, pose)
+    theta_delta = get_correction_angle(distance_robot_line, betha, pose)
+    omega_t = np.minimum(omega_max, K_omega * theta_delta)
+    v_t = np.minimum(v_max, v)
+    # move the robot for 1 timestep
+    robot.move([v_t, omega_t])
+    return robot
+
 
 
 def followLine(robot, v, p1, p2, tol= 0.5):
@@ -184,7 +217,7 @@ def followLine(robot, v, p1, p2, tol= 0.5):
     """
     v_max = robot._maxSpeed
     omega_max = robot._maxOmega
-    K_omega = 0.1
+    K_omega = 0.5
     K_v = 1
 
     (n, n_norm, n_0, alpha, O_distance) = line_utils(p1, p2)
@@ -199,46 +232,64 @@ def followLine(robot, v, p1, p2, tol= 0.5):
 
     # required for calculating the orientation of the line
     betha = np.pi/2 - alpha
-    
+
+    # move the robot along the line
     while (getRobotDistanceToPoint(p2) > tol):
-        # calulate distance between robot and line
-        (robot_x, robot_y,robot_theta) = myWorld.getTrueRobotPose()
-        distance_robot_line = np.dot(np.array((robot_x, robot_y)).transpose(), n_0) - O_distance
-        gamma = atan2(1, distance_robot_line) # vector length of norm vector is 1
-
-        # calculate the correction of angular change
-        theta_star = np.pi - betha - gamma
-        theta_delta  = angularDifference(theta_star, robot_theta)
-        omega_t = np.minimum(omega_max, K_omega * theta_delta)
-        v_t = np.minimum(v_max, v)
-
-        # move the robot for 1 timestep
-        robot.move([v_t, omega_t])
-    
+        moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)   
     return robot
 
 
-# create polyline that needs to be followed
-poly = [[[50, 40], [80,80]],
-    [[80, 80], [20,80]]]
 
 
-def followPolyline(robot, v, poly):
+def followPolyline(robot, v, poly, tol= 0.5, curve_tol = 5):
     v_max = robot._maxSpeed
     omega_max = robot._maxOmega
+    K_omega = 0.5
+    K_v = 1
+
+    num_lines = len(poly)
+    print(f'Number of polylines: {num_lines}')
     myWorld.drawPolylines(poly, color='green')
+    line_count = 0
     for singleline in poly:
+        line_count = line_count + 1
         print(singleline)
         p1 = np.array((singleline[0][0],singleline[0][1])).transpose()
         print(f'p1: {p1}')
         p2 = np.array((singleline[1][0],singleline[1][1])).transpose()
         print(f'p2: {p2}')
-        followLine(myRobot, 0.5, p1, p2)
+        #followLine(myRobot, 0.5, p1, p2)
 
+        # define the current line
+        (n, n_norm, n_0, alpha, O_distance) = line_utils(p1, p2)
+        betha = np.pi/2 - alpha
+
+        if line_count < num_lines:
+            # drive along the line until close to next line segment
+            while (getRobotDistanceToPoint(p2) > curve_tol):
+                moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)
+        else:
+            # drive to the end of the last line segment
+            while (getRobotDistanceToPoint(p2) > tol):
+                moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)
     return robot
 
-myWorld.setRobot(myRobot, [12, myWorld._height/2, 2])
-followPolyline(myRobot, 0.5, poly)
+myWorld.setRobot(myRobot, [60, myWorld._height/2, -1])
+
+# create polyline that needs to be followed
+# poly = [[[50, 40], [80,80]],  # funktioniert
+#     [[80, 80], [20,80]]]
+
+# poly = [[[50, 40], [60,60]], # Rechtskurve funktioniert nicht
+#     [[60, 60], [60,80]],
+#     [[60, 80], [70,80]]]    
+
+poly = [[[70, 40], [60,60]], # funktioniert
+    [[60, 60], [60,80]],
+    [[60, 80], [50,70]]]
+
+
+followPolyline(myRobot, 0.3, poly)
 #followLine(myRobot, 0.5, np.array((50,40)).transpose(), np.array((80,80)).transpose())
 #gotoGlobal(myRobot, 0.5, (23, 50), 1)
 #straightDrive(myRobot, 0.5, 30)
