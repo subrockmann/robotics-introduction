@@ -107,7 +107,7 @@ def getRobotDistanceToPoint(p):
 
 
 def gotoGlobal(robot, v, p, tol):
-    K_omega = 0.1   # macht der Wert Sinn?
+    K_omega = 0.5   # macht der Wert Sinn?
     K_v = 0.1
     v_max = robot._maxSpeed
     omega_max = robot._maxOmega
@@ -137,19 +137,20 @@ def gotoGlobal(robot, v, p, tol):
         delta = np.sqrt((x_star - x)**2 + (y_star - y)**2)
     return robot
 
-def followLine(robot, v, p1, p2):
+def followLine(robot, v, p1, p2, tol= 0.5):
     """
     follow a line with speed v from p1 to p2
     :param robot: robot object
     :param v: velocity of robot
     :param p1: nd.array 2d of line point p1
     :param p2: nd.array 2d of line point p2
-    :distance: distanc
+    :distance: distance between line and origin
     :return: robot
     """
     v_max = robot._maxSpeed
     omega_max = robot._maxOmega
     K_omega = 0.1
+    K_v = 1
 
     #define the line p1 - p2
     p1_x = p1[0]
@@ -160,7 +161,7 @@ def followLine(robot, v, p1, p2):
     #(p2_x, p2_y) = p2
 
     polyline = [[p1_x, p1_y], [p2_x, p2_y]]
-    myWorld.drawPolyline(polyline, color ='green')
+    #myWorld.drawPolyline(polyline, color ='green')
 
     # calculate normal vector n for line p1 - p2
     alpha = atan2(p2_y - p1_y, p2_x - p1_x)
@@ -173,16 +174,16 @@ def followLine(robot, v, p1, p2):
         n_0 = n/n_norm
     else:
         n_0 = -n/n_norm
-    distance = np.dot(p1, n_0)
-    print (f'Distance to origin: {distance}')
+    O_distance = np.dot(p1, n_0)
+    print (f'Distance to origin: {O_distance}')
     line_direction_vector = np.array(((p2_x - p1_x), (p2_y - p1_y))).transpose()
-    line_direction_vector_norm = np.linalg.norm(line_direction_vector)
-    line_direction_vector_0 = line_direction_vector/line_direction_vector_norm
+    #line_direction_vector_norm = np.linalg.norm(line_direction_vector)
+    #line_direction_vector_0 = line_direction_vector/line_direction_vector_norm
 
-    while (getRobotDistanceToPoint(p2)>1):
+    while (getRobotDistanceToPoint(p2) > tol):
         # calulate distance between robot and line
         (robot_x, robot_y,robot_theta) = myWorld.getTrueRobotPose()
-        distance_robot_line = np.dot(np.array((robot_x, robot_y)).transpose(), n_0) - distance
+        distance_robot_line = np.dot(np.array((robot_x, robot_y)).transpose(), n_0) - O_distance
         #theta_star = atan2(1, distance_robot_line) ### hier steckt noch der Wurm drin - np.radians(90) # vector length of norm vector is 1
         gamma = atan2(1, distance_robot_line)
 
@@ -191,14 +192,35 @@ def followLine(robot, v, p1, p2):
         theta_delta  = angularDifference(theta_star, robot_theta)
         omega = np.minimum(omega_max, K_omega * theta_delta)
         v_t = np.minimum(v_max, v)
-
+        #v_t = np.minimum(v_t, K_v * (np.sqrt((x_star - x)**2 + (y_star - y)**2)))
         # move the robot for 1 timestep
         robot.move([v_t, omega])
     
     return robot
 
+
+# create polyline that needs to be followed
+poly = [[[50, 40], [80,80]],
+    [[80, 80], [20,80]]]
+
+
+def followPolyline(robot, v, poly):
+    v_max = robot._maxSpeed
+    omega_max = robot._maxOmega
+    myWorld.drawPolylines(poly, color='green')
+    for singleline in poly:
+        print(singleline)
+        p1 = np.array((singleline[0][0],singleline[0][1])).transpose()
+        print(f'p1: {p1}')
+        p2 = np.array((singleline[1][0],singleline[1][1])).transpose()
+        print(f'p2: {p2}')
+        followLine(myRobot, 0.5, p1, p2)
+
+    return robot
+
 myWorld.setRobot(myRobot, [12, myWorld._height/2, 2])
-followLine(myRobot, 0.5, np.array((50,40)).transpose(), np.array((80,80)).transpose())
+followPolyline(myRobot, 0.5, poly)
+#followLine(myRobot, 0.5, np.array((50,40)).transpose(), np.array((80,80)).transpose())
 #gotoGlobal(myRobot, 0.5, (23, 50), 1)
 #straightDrive(myRobot, 0.5, 30)
 
