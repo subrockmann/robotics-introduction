@@ -6,6 +6,7 @@ import numpy as np
 from Robot_Simulator_V3 import labyrinthWorld
 from Robot_Simulator_V3 import Robot
 from Robot_Simulator_V3 import sensorUtilities
+from Robot_Simulator_V3 import geometry
 
 
 # Roboter in Office-World positionieren:
@@ -67,7 +68,7 @@ def turnOnSpot(robot, theta, omega):
             robot.move(motion)
         return robot
 
-def getObstacleDistance(dists):
+def getMinObstacleDistance(dists):
     obstacle_dist = min(i for i in list(dists) if i is not None)
     return obstacle_dist
 
@@ -75,9 +76,9 @@ def angularDifference(theta_1, theta_2):
     return np.mod((theta_1 - theta_2 + np.pi), 2*np.pi) - np.pi
 
 def getRobotDistanceToPoint(p):
-    (robot_x, robot_y,robot_theta) = myWorld.getTrueRobotPose()
+    (robot_x, robot_y, _) = myWorld.getTrueRobotPose()
     distance_to_point = np.sqrt((p[0]-robot_x)**2 + (p[1]-robot_y)**2)
-    print (f'Distance to point2: {distance_to_point}')
+    print (f'Distance to point: {distance_to_point}')
     return distance_to_point
 
 def line_utils(p1, p2):
@@ -112,15 +113,15 @@ def line_utils(p1, p2):
 
 def distance_to_line(n_0, O_distance, pose):    
     # calulate distance between robot and line
-    (robot_x, robot_y,robot_theta) = pose
+    (robot_x, robot_y, _) = pose
     distance_robot_line = np.dot(np.array((robot_x, robot_y)).transpose(), n_0) - O_distance
-    return abs(distance_robot_line)
+    return distance_robot_line
 
 def get_correction_angle(distance_robot_line, betha, pose):
-    (robot_x, robot_y,robot_theta) = pose
+    (_, _, robot_theta) = pose
     # calculate the correction of angular change
     gamma = atan2(1, distance_robot_line) # vector length of norm vector is 1
-    betha_gamma = betha + gamma
+    #betha_gamma = betha + gamma
     #theta_star = angularDifference(np.pi, betha_gamma)
     theta_star = np.pi - betha - gamma
     theta_delta  = angularDifference(theta_star, robot_theta)
@@ -132,15 +133,49 @@ def moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v):
     theta_delta = get_correction_angle(distance_robot_line, betha, pose)
     #omega_t = np.minimum(omega_max, K_omega * theta_delta)
     omega_t = K_omega * theta_delta
+    print(f"Omega_t: {omega_t}")
     v_t = np.minimum(v_max, v)
     # move the robot for 1 timestep
     robot.move([v_t, omega_t])
     return robot
 
+def followLine(robot, v, p1, p2, tol= 0.5):
+    """
+    follow a line with speed v from p1 to p2
+    :param robot: robot object
+    :param v: velocity of robot
+    :param p1: nd.array 2d of line point p1
+    :param p2: nd.array 2d of line point p2
+    :distance: distance between line and origin
+    :return: robot
+    """
+    v_max = robot._maxSpeed
+    omega_max = robot._maxOmega
+    K_omega = 0.5
+    K_v = 1
+
+    (n, n_norm, n_0, alpha, O_distance) = line_utils(p1, p2)
+    
+    # draw the polyline 
+    p1_x = p1[0]
+    p1_y = p1[1]
+    p2_x = p2[0]
+    p2_y = p2[1]
+    polyline = [[p1_x, p1_y], [p2_x, p2_y]]
+    myWorld.drawPolyline(polyline, color ='green')
+
+    # required for calculating the orientation of the line
+    betha = np.pi/2 - alpha
+
+    # move the robot along the line
+    while (getRobotDistanceToPoint(p2) > tol):
+        moveAlongLine(robot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)   
+    return robot
+
 def wander(v):
     dists = myRobot.sense()
     while True:
-        if (getObstacleDistance(dists) > min_distance):
+        if (getMinObstacleDistance(dists) > min_distance):
             myRobot.move([v, 0])
             dists = myRobot.sense()
         else:
@@ -160,24 +195,75 @@ def followWall(v,d):
     directions = myRobot.getSensorDirections()
     lines_l = sensorUtilities.extractSegmentsFromSensorData(dists, directions)
     lines_g = sensorUtilities.transformPolylinesL2G(lines_l, myWorld.getTrueRobotPose())
-    my_line = lines_g[0]
-    myWorld.drawPolyline(my_line)
-    print(lines_l[0])
-    p1 = lines_l[0][0]
-    p2 = lines_l[0][1]
+
+    # find the index of the closest lidar beam
+    obstacle_dist = getMinObstacleDistance(dists)  
+    line_index = dists.index(obstacle_dist)
+    print(f"Line number {line_index} is closest to the robot")
+    print(len(lines_l))
+    pose = myWorld.getTrueRobotPose()
+    (robot_x, robot_y, robot_theta) = pose
+    
+    # find the closes wall
+    wall_distances = []
+    for line_l in lines_l:
+        distance_robot_wall = geometry.distPointLineWithSign((robot_x, robot_y), line_l)
+        wall_distances.append(distance_robot_wall)
+    print(f"Distance to walls: {wall_distances}")
+    closest_wall = min(abs(i) for i in list(wall_distances) if i is not None)
+    print(f"Distance to closest wall: {closest_wall}")
+    wall_index = wall_distances.index(closest_wall)
+    wall = lines_l[wall_index]
+    print(f"Closest wall is wall no. {wall_index} - {wall}")
+
+    myWorld.drawPolyline(wall)
+    #print(lines_l[0])
+    p1 = wall[0]
+    p2 = wall[1]
     print(p1)
 
-    (n, n_norm, n_0, alpha, O_distance) = line_utils(p1, p2)
+    # get the distance between the robot and the selected wall
+    (robot_x, robot_y, robot_theta) = myWorld.getTrueRobotPose()
+    distance_robot_wall = geometry.distPointLineWithSign((robot_x, robot_y), wall)
+    print(f"Distance between robot and wall {distance_robot_wall}") 
+    
+    n_vector = geometry.normalToLine((robot_x, robot_y), wall)
+    print("Vektor_n", n_vector)
+    n_lenght = sqrt(n_vector[0] ** 2 + n_vector[1] ** 2)
+    print("Abstandvektor:", n_lenght)
 
+    alpha = atan2(wall[1][1] - wall[0][1], wall[1][0] - wall[0][0])
+    #alpha = atan2(p2_y - p1_y, p2_x - p1_x)
     # required for calculating the orientation of the line
     betha = np.pi/2 - alpha
-    pose = myWorld.getTrueRobotPose()
-    distance = distance_to_line(n_0, O_distance, pose)
-    print(f"Distance to line: {distance}")
+    
+    while True:
+        (robot_x, robot_y, robot_theta) = myWorld.getTrueRobotPose()
+        distance_robot_wall = geometry.distPointLineWithSign((robot_x, robot_y), wall)
+        gamma = atan2(1, distance_robot_wall)
+        theta_star = np.pi - betha - gamma
+        theta_delta  = angularDifference(theta_star, robot_theta)
+
+        if (abs(distance_robot_wall) > d):
+            omega_t = K_omega * theta_delta
+            myRobot.move([v, omega_t])
+        else:
+            ### Hier klemmt es noch!!! Rückwärtsfahren ist nicht sinnvoll, da dort keine Sensoren sind
+            omega_t = K_omega * theta_delta
+            myRobot.move([-v, omega_t])
+    return
+
+    # (n, n_norm, n_0, alpha, O_distance) = line_utils(p1, p2)
+
+    # # required for calculating the orientation of the line
+    # betha = np.pi/2 - alpha
+    # pose = myWorld.getTrueRobotPose()
+    # distance = distance_to_line(n_0, O_distance, pose)
+    # print(f"Distance to line: {distance}")
     # move the robot along the line
-    while (distance_to_line(n_0, O_distance, pose) > d):
-        moveAlongLine(myRobot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)   
-        pose = myWorld.getTrueRobotPose()
+    # while (distance_to_line(n_0, O_distance, pose) > d):
+    #     moveAlongLine(myRobot, n_0, O_distance, betha, omega_max, K_omega, v_max, v)   
+    #     pose = myWorld.getTrueRobotPose()
 
     # while True:
     #     # no line found
@@ -189,24 +275,30 @@ def followWall(v,d):
     #     else:
     #         line_g = sensorUtilities.transformPolylinesL2G(lines_l[0:1], myWorld.getTrueRobotPose())
     #         myWorld.drawPolylines(line_g)
-    return 
-
-myWorld.setRobot(myRobot, [2, 18, 1])
-
-#followWall(0.5, 0.1)
 
 
+myWorld.setRobot(myRobot, [2, 18, 0])
+
+
+#followLine(myRobot, 0.5, np.array((50,40)).transpose(), np.array((80,80)).transpose())
+#print(myRobot.getSensorDirections())
+
+
+followWall(0.5, 1)
 
 
 
-wander(v)
 
-#obstacle_dist =getObstacleDistance(dists)
-#print(f"minimal distance to obstacle: {obstacle_dist}")
-directions = myRobot.getSensorDirections()
 
-#print(f"dists: {dists} \nl")
-#print(f"directions: {directions}")
+#wander(v)
+# dists = myRobot.sense()
+# print(len(dists))
+# obstacle_dist =getMinObstacleDistance(dists)
+# print(f"minimal distance to obstacle: {obstacle_dist}")
+# directions = myRobot.getSensorDirections()
+
+# print(f"dists: {dists} \nl")
+# print(f"directions: {directions}")
 
 
 # Simulation schliessen:
