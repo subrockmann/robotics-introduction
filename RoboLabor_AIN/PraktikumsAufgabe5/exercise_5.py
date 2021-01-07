@@ -172,7 +172,7 @@ def followPolyline(robot, v, poly):
         x, y, theta = myWorld.getTrueRobotPose()
         followLine(robot, v, (x, y), poly[p], with_tol=True, tol=0.5)
 
-def wander(robot, v, mode, d, start_theta):
+def wander_search(robot, v, mode, d, start_theta):
     """
     Robot should drive in the environment without any collisions
     :param d: distance to wall
@@ -185,7 +185,7 @@ def wander(robot, v, mode, d, start_theta):
     theta_small = 50 * pi / 180
     theta = start_theta
 
-    while True:
+    while myRobot.senseBoxes() is None:
         dist = []
         motion = [v, 0.0]
         robot.move(motion)
@@ -254,6 +254,22 @@ def turn_on_spot(d, lines, left_rotate=True, first=False):
         motion = motionTurn[t]
         myRobot.move(motion)
 
+
+def rotate_on_spot(robot, angle, omega):
+    print()
+    if abs(omega) >= abs(robot._maxOmega):
+        print(f"Rotation speed {omega} is too high for this robot. Max speed {robot._maxOmega}")
+        return
+    else:
+        n = abs(int((angle/omega)/myRobot.getTimeStep()))
+        print (f'Timesteps: {n}')
+        motionList = [[0, -omega] for i in range(n)] # movements
+
+        for t in range(n):
+            # Bewege Roboter
+            motion = motionList[t]
+            robot.move(motion)
+        return robot
 
 def motion_drive(distance, v):
     """
@@ -386,7 +402,12 @@ def followWall(v, d):
                             myRobot.move(motion)
                             dists = myRobot.sense()
 
-
+def get_closest_box(boxes):
+    from operator import itemgetter
+    boxes_sorted = sorted(boxes, key=itemgetter(0))
+    print(boxes_sorted)
+    #box_dist = min(i for i in list(boxes[i][0]) if i is not None)
+    return boxes_sorted[0]
 
 
 if __name__ == "__main__":
@@ -394,9 +415,33 @@ if __name__ == "__main__":
     myWorld = twoRoomsWorld.buildWorld()
     myRobot = Robot.Robot()
 
+
+    #pickup_distance = myRobot._boxPickUp_x_min + (myRobot._boxPickUp_x_max - myRobot._boxPickUp_x_min/2.0)
+    pickup_distance = 0.2
+
+    robot_radius = myRobot.getSize() / 2
+    
+    print(pickup_distance)
+
     myWorld.setRobot(myRobot, [10, 6, 0])
     
-    wander(myRobot, 0.1, 'any', 0.5, 0.0)
+    wander_search(myRobot, 0.1, 'any', 0.5, 0.0)
+
+    while myRobot.boxInPickUpPosition() is False:
+        boxes = myRobot.senseBoxes()
+        if boxes is not None:
+            print(f"found {len(boxes)} boxes!")
+            distance, angle = get_closest_box(boxes)
+            print(f"Distance to closest box {distance} at {angle} degrees")
+            rotate_on_spot(myRobot, angle, 0.5)
+            motion_drive(distance - pickup_distance - robot_radius, 0.5)
+        else:
+            wander_search(myRobot, 0.1, 'any', 0.5, 0.0)
+
+   
+    myRobot.mpickUpBox()
+    print("Picked up a box -> next go to depot")
+
 
     # Simulation schliessen:
-    #myWorld.close()
+    myWorld.close()
