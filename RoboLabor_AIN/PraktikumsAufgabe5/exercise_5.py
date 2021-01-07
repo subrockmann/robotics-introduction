@@ -409,21 +409,13 @@ def get_closest_box(boxes):
     #box_dist = min(i for i in list(boxes[i][0]) if i is not None)
     return boxes_sorted[0]
 
-
-if __name__ == "__main__":
-    # Put robot in twoRoomsWorld:
-    myWorld = twoRoomsWorld.buildWorld()
-    myRobot = Robot.Robot()
-
-
+def find_and_pickup_box(myRobot):
     #pickup_distance = myRobot._boxPickUp_x_min + (myRobot._boxPickUp_x_max - myRobot._boxPickUp_x_min/2.0)
     pickup_distance = 0.2
 
     robot_radius = myRobot.getSize() / 2
-    
-    print(pickup_distance)
 
-    myWorld.setRobot(myRobot, [10, 6, 0])
+
     
     wander_search(myRobot, 0.1, 'any', 0.5, 0.0)
 
@@ -438,9 +430,34 @@ if __name__ == "__main__":
         else:
             wander_search(myRobot, 0.1, 'any', 0.5, 0.0)
 
-   
     myRobot.mpickUpBox()
     print("Picked up a box -> next go to depot")
+
+
+if __name__ == "__main__":
+
+    win = GraphWin("Graphic for following a line", 500, 500)
+    win.setCoords(0, 0, 20, 20)
+    win.setBackground('white')
+
+    # Put robot in twoRoomsWorld:
+    myWorld = twoRoomsWorld.buildWorld()
+    myRobot = Robot.Robot()
+    myWorld.setRobot(myRobot, [10, 6, 0])
+
+
+    depot_path = [(7, 2.75),(9, 2.75), (14, 9.75), (16, 9.75), (16, 12.5)]
+    depot_room1_path = [(16, 12.5), (16, 9.75),(14, 9.75), (9, 2.75), (8, 2.75), (8, 2.8)]
+    depot_room2_path = [(16, 12.5), (16, 9.75),(14, 9.75)]
+
+    myWorld.drawPolyline(depot_path, color ='green')
+
+    while True:
+        find_and_pickup_box(myRobot)
+        followPolyline(myRobot, 0.5, depot_path)
+        myRobot.placeBox()
+        followPolyline(myRobot, 0.5, depot_room1_path)
+
 
 
     # Simulation schliessen:
