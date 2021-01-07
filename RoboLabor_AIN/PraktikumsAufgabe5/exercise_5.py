@@ -77,7 +77,7 @@ def followLine(robot, v, p1, p2, with_tol=False, tol=0.0):
     omega_new = min(myRobot.getMaxOmegaValue(), K_omega * diff)
     print("New Omega:", omega_new * 180 / pi)
 
-    n_times = int((omega_new / omega_new) / myRobot.getTimeStep())
+    n_times = int((omega_new / omega_new) / myRobot.getTimeStep())  #### omega_new/omega_new?? float division by zero error
     motionRot = [[0.0, omega_new] for i in range(n_times)]
 
     for j in range(n_times):
@@ -171,6 +171,62 @@ def followPolyline(robot, v, poly):
     for p in range(2, number_of_lines):
         x, y, theta = myWorld.getTrueRobotPose()
         followLine(robot, v, (x, y), poly[p], with_tol=True, tol=0.5)
+
+def wander(robot, v, mode, d):
+    """
+    Robot should drive in the environment without any collisions
+    :param d: distance to wall
+    :param robot: Robot
+    :param mode: choose between driving along a wall or in any way
+    :param v: speed of the robot
+    """
+
+    theta_big = 100 * pi / 180
+    theta_small = 50 * pi / 180
+
+    while True:
+        dist = []
+        motion = [v, 0.0]
+        robot.move(motion)
+        x_t, y_t, theta_pose = myWorld.getTrueRobotPose()
+        win.plot(x_t, y_t, color='red')
+        lines_g, distance_values = distance_check()
+        for dist_value in distance_values:
+            if dist_value is not None and dist_value < 1.0:
+                dist.append(dist_value)
+        if len(dist) > 0:
+            min_value = np.amin(dist)
+            x, y, theta = myWorld.getTrueRobotPose()
+            if min_value < d and mode == 'wall':
+                break
+            elif min_value < d and len(dist) >= 12 and mode == 'any':
+                print("1")
+                print(len(dist))
+                theta_new = (theta + theta_big)
+            elif min_value < d and 5 < len(dist) < 12 and mode == 'any':
+                print("2")
+                print(len(dist))
+                theta_new = (theta + theta_small)
+            if min_value < d and (len(dist) > 12 or 5 < len(dist) <= 12) and mode == 'any':
+                print(theta_new * 180 / pi)
+                print(theta)
+                diff = ((theta_new - theta + pi) % (2 * pi)) - pi
+                omega = min(myRobot.getMaxOmegaValue(), diff)
+                print("Omega:", omega)
+                delta_t = int((omega / omega) / myRobot.getTimeStep())
+                motionTurn = [[0.0, omega] for i in range(delta_t)]
+                for t in range(delta_t):
+                    motion = motionTurn[t]
+                    robot.move(motion)
+                    x_t, y_t, theta_pose = myWorld.getTrueRobotPose()
+                    win.plot(x_t, y_t, color='red')
+            else:
+                continue
+        else:
+            motion = [v, 0.0]
+            robot.move(motion)
+            x_t, y_t, theta_pose = myWorld.getTrueRobotPose()
+            win.plot(x_t, y_t, color='red')
 
 def wander_search(robot, v, mode, d, start_theta):
     """
@@ -307,8 +363,9 @@ def followWall(v, d):
     wall_is_already_drived = False
     rotation_is_done = False
 
-    while True:
-        wander(myRobot, v, 'wall', d, 0.0)  # wander, bis Wand am Anfang gefunden wird
+    while myRobot.senseBoxes() is None:
+        #wander(myRobot, v, 'wall', d, 0.0)  # wander, bis Wand am Anfang gefunden wird
+        wander(myRobot, v, d, 0.0)  # wander, bis Wand am Anfang gefunden wird
         lines_g, dists = distance_check()
         turn_on_spot(d, lines_g, left_rotate=True, first=True)
         while True:
@@ -457,6 +514,7 @@ if __name__ == "__main__":
         followPolyline(myRobot, 0.5, depot_path)
         myRobot.placeBox()
         followPolyline(myRobot, 0.5, depot_room1_path)
+        followWall(0.5, 0.5)
 
 
 
